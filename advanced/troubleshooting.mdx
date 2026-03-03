@@ -65,15 +65,17 @@ if err != nil {
 **Solutions:**
 
 <AccordionGroup>
-  <Accordion title="Verify you're on Apple Silicon">
-    Spank requires macOS on Apple Silicon (M1, M2, M3, etc.).
+  <Accordion title="Verify you're on Apple Silicon M2+">
+    Spank requires macOS on Apple Silicon M2 or newer. M1 chips are not supported.
     
     ```bash
     # Check your chip
     sysctl machdep.cpu.brand_string
     ```
     
-    Intel Macs are not supported (no Bosch BMI286 IMU).
+    **Supported:** M2, M2 Pro, M2 Max, M3, M3 Pro, M3 Max, M4, M4 Pro, M4 Max
+    
+    **Not supported:** Intel Macs, M1 (different accelerometer hardware)
   </Accordion>
   
   <Accordion title="Check for conflicting processes">
