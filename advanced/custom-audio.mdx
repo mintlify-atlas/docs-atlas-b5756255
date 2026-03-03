@@ -1,0 +1,204 @@
+---
+title: Custom Audio
+description: Learn how to use custom MP3 files with Spank
+---
+
+Spank supports loading custom MP3 audio files from a directory on your system using the `--custom` flag. This allows you to personalize your laptop's responses with any sounds you want.
+
+## Usage
+
+```bash
+sudo spank --custom /path/to/your/mp3s
+```
+
+<Warning>
+  The `--custom`, `--sexy`, and `--halo` flags are mutually exclusive. You can only use one mode at a time.
+</Warning>
+
+## How It Works
+
+When you specify a custom directory:
+
+1. Spank scans the directory for all files (non-directories)
+2. Files are sorted alphabetically and loaded into memory
+3. When a slap is detected, a random MP3 file is selected and played
+4. Custom mode uses **random playback** (not escalation mode)
+
+Relevant code from `main.go:91-119`:
+
+```go
+func (sp *soundPack) loadFiles() error {
+    if sp.custom {
+        entries, err := os.ReadDir(sp.dir)
+        if err != nil {
+            return err
+        }
+        sp.files = make([]string, 0, len(entries))
+        for _, entry := range entries {
+            if !entry.IsDir() {
+                sp.files = append(sp.files, sp.dir+"/"+entry.Name())
+            }
+        }
+    }
+    // ... files sorted alphabetically
+}
+```
+
+## File Requirements
+
+<Steps>
+  <Step title="Use MP3 format">
+    All audio files must be in **MP3 format**. Spank uses the `beep` library's `mp3.Decode()` function to decode audio files.
+    
+    Other formats (WAV, FLAC, OGG, etc.) are not supported and will cause decode errors.
+  </Step>
+  
+  <Step title="Create a directory">
+    Place all your MP3 files in a single directory:
+    
+    ```bash
+    mkdir ~/my-spank-sounds
+    cp sound1.mp3 sound2.mp3 sound3.mp3 ~/my-spank-sounds/
+    ```
+  </Step>
+  
+  <Step title="Run with --custom flag">
+    Point Spank to your directory:
+    
+    ```bash
+    sudo spank --custom ~/my-spank-sounds
+    ```
+  </Step>
+</Steps>
+
+## Directory Structure
+
+Your custom audio directory should look like this:
+
+```
+/path/to/custom/audio/
+├── sound1.mp3
+├── sound2.mp3
+├── sound3.mp3
+└── another-sound.mp3
+```
+
+<Note>
+  - Files are read from the top level of the directory only (subdirectories are ignored)
+  - File names don't matter; they're just sorted alphabetically internally
+  - You need at least one MP3 file in the directory, or you'll get an error: "no audio files found"
+</Note>
+
+## Examples
+
+### Basic Custom Audio
+
+```bash
+# Use custom sounds from your Downloads folder
+sudo spank --custom ~/Downloads/spank-sounds
+```
+
+### Custom Audio with Sensitivity Adjustment
+
+```bash
+# More sensitive detection with custom sounds
+sudo spank --custom /Users/you/my-sounds --min-amplitude 0.15
+
+# Less sensitive (only strong slaps)
+sudo spank --custom /Users/you/my-sounds --min-amplitude 0.4
+```
+
+### Creating Your Own Sound Pack
+
+```bash
+# Create a themed sound pack
+mkdir ~/spank-pokemon
+cp pikachu.mp3 charmander.mp3 squirtle.mp3 ~/spank-pokemon/
+sudo spank --custom ~/spank-pokemon
+```
+
+## Playback Behavior
+
+Custom mode uses **random playback**:
+
+- Each slap randomly selects one of your MP3 files
+- All files have equal probability of being played
+- No escalation (unlike `--sexy` mode)
+
+From `main.go:161-164`:
+
+```go
+func (st *slapTracker) getFile(score float64) string {
+    if st.pack.mode == modeRandom {
+        return st.pack.files[rand.Intn(len(st.pack.files))]
+    }
+    // ...
+}
+```
+
+## Technical Details
+
+### Audio Decoding
+
+Spank uses the [beep library](https://github.com/gopxl/beep) for audio playback. Custom files are decoded using:
+
+```go
+// From main.go:354-365
+file, err := os.Open(path)
+streamer, format, err = mp3.Decode(file)
+```
+
+### Embedded vs. Custom Audio
+
+The built-in modes (pain, sexy, halo) use `go:embed` to bundle MP3s directly into the binary:
+
+```go
+//go:embed audio/pain/*.mp3
+var painAudio embed.FS
+```
+
+Custom mode reads files from the filesystem at runtime using `os.Open()`, so your files stay on disk and aren't compiled into the binary.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: no audio files found">
+    This means the directory is empty or contains only subdirectories.
+    
+    **Solution:** Ensure you have at least one `.mp3` file in the top level of the directory.
+    
+    ```bash
+    ls /path/to/your/directory/*.mp3
+    ```
+  </Accordion>
+  
+  <Accordion title="Error: decode failed">
+    The file may be corrupted or not a valid MP3.
+    
+    **Solution:** Re-encode your audio files to MP3:
+    
+    ```bash
+    ffmpeg -i input.wav -codec:a libmp3lame -qscale:a 2 output.mp3
+    ```
+  </Accordion>
+  
+  <Accordion title="No sound plays">
+    The audio may be decoding but speaker initialization failed.
+    
+    **Solution:** Check that:
+    - Your system audio is not muted
+    - The MP3 files are valid
+    - You have proper permissions to access audio devices
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Troubleshooting" icon="wrench" href="/advanced/troubleshooting">
+    Common issues and solutions
+  </Card>
+  <Card title="Sensitivity Tuning" icon="sliders" href="/usage/sensitivity">
+    Adjust detection sensitivity
+  </Card>
+</CardGroup>

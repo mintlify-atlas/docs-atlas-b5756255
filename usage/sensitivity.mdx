@@ -1,0 +1,238 @@
+---
+title: 'Sensitivity'
+description: 'Adjust slap detection sensitivity with the min-amplitude threshold'
+---
+
+Spank uses the `--min-amplitude` flag to control how sensitive the accelerometer detection is. This determines the minimum g-force required to trigger an audio response.
+
+## The min-amplitude Flag
+
+```bash
+sudo spank --min-amplitude 0.3
+```
+
+**Flag Definition:** `main.go:200`
+
+```go
+cmd.Flags().Float64Var(&minAmplitude, "min-amplitude", 0.3, "Minimum amplitude threshold (0.0-1.0, lower = more sensitive)")
+```
+
+<Note>
+  **Default value:** `0.3`
+  
+  **Valid range:** `0.0` to `1.0`
+  
+  Lower values = more sensitive (detects lighter taps)
+  
+  Higher values = less sensitive (requires harder impacts)
+</Note>
+
+---
+
+## How It Works
+
+When the accelerometer detects motion, Spank calculates the amplitude (g-force magnitude) of the impact. The audio only plays if:
+
+1. The amplitude exceeds the `--min-amplitude` threshold
+2. At least 750ms has passed since the last sound (cooldown)
+
+**Code Reference:** `main.go:336-338`
+
+```go
+if ev.Amplitude < minAmplitude {
+    continue
+}
+```
+
+The amplitude represents the acceleration force measured in g-force (where 1.0 = Earth's gravity).
+
+---
+
+## Validation
+
+Spank validates the min-amplitude value at startup. Values outside the 0.0-1.0 range will cause an error.
+
+**Code Reference:** `main.go:226-228`
+
+```go
+if minAmplitude < 0 || minAmplitude > 1 {
+    return fmt.Errorf("--min-amplitude must be between 0.0 and 1.0")
+}
+```
+
+---
+
+## Recommended Values
+
+Choose a sensitivity level based on your use case:
+
+<Tabs>
+  <Tab title="High Sensitivity">
+    **Values:** `0.05` - `0.15`
+    
+    ```bash
+    sudo spank --min-amplitude 0.1
+    ```
+    
+    **Best for:**
+    - Detecting light taps and gentle touches
+    - Testing the accelerometer response
+    - Very reactive setups
+    
+    **Considerations:**
+    - May trigger on keyboard typing or normal movement
+    - Could produce false positives from vibrations
+    - More frequent audio playback
+  </Tab>
+  
+  <Tab title="Medium Sensitivity (Default)">
+    **Values:** `0.2` - `0.35`
+    
+    ```bash
+    sudo spank --min-amplitude 0.3  # default
+    ```
+    
+    **Best for:**
+    - Balanced detection
+    - General use cases
+    - Avoiding false triggers while still being responsive
+    
+    **Considerations:**
+    - Requires deliberate slaps/taps
+    - Good signal-to-noise ratio
+    - Recommended for most users
+  </Tab>
+  
+  <Tab title="Low Sensitivity">
+    **Values:** `0.4` - `0.6`
+    
+    ```bash
+    sudo spank --min-amplitude 0.5
+    ```
+    
+    **Best for:**
+    - Only detecting hard impacts
+    - Minimizing false positives
+    - Public/professional environments where accidental triggers are undesirable
+    
+    **Considerations:**
+    - Requires significant force to trigger
+    - May miss moderate slaps
+    - Very low response rate
+  </Tab>
+</Tabs>
+
+---
+
+## Combining with Modes
+
+The `--min-amplitude` flag works with all modes:
+
+<CodeGroup>
+```bash Pain Mode
+sudo spank --min-amplitude 0.25
+```
+
+```bash Sexy Mode
+sudo spank --sexy --min-amplitude 0.2
+```
+
+```bash Halo Mode
+sudo spank --halo --min-amplitude 0.4
+```
+
+```bash Custom Mode
+sudo spank --custom ~/sounds --min-amplitude 0.15
+```
+</CodeGroup>
+
+---
+
+## Real-Time Output
+
+When a slap is detected, Spank logs the amplitude to help you tune your sensitivity:
+
+```bash
+slap #1 [moderate amp=0.32000g] -> audio/pain/001.mp3
+slap #2 [strong amp=0.55000g] -> audio/pain/007.mp3
+slap #3 [weak amp=0.28000g] -> audio/pain/003.mp3
+```
+
+The `amp=X.XXXXXg` shows the detected g-force. Use this to:
+
+- **Increase threshold:** If you see unwanted triggers with low amplitudes
+- **Decrease threshold:** If your slaps show high amplitudes but don't trigger
+
+**Code Reference:** `main.go:343`
+
+```go
+fmt.Printf("slap #%d [%s amp=%.5fg] -> %s\n", num, ev.Severity, ev.Amplitude, file)
+```
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Not triggering when I slap">
+    **Problem:** Your slaps aren't registering
+    
+    **Solution:** Lower the min-amplitude value
+    
+    ```bash
+    # Try progressively lower values
+    sudo spank --min-amplitude 0.2
+    sudo spank --min-amplitude 0.15
+    sudo spank --min-amplitude 0.1
+    ```
+    
+    Observe the console output to see detected amplitudes and adjust accordingly.
+  </Accordion>
+  
+  <Accordion title="Too many false triggers">
+    **Problem:** Normal typing or movement triggers sounds
+    
+    **Solution:** Raise the min-amplitude value
+    
+    ```bash
+    # Try progressively higher values
+    sudo spank --min-amplitude 0.35
+    sudo spank --min-amplitude 0.4
+    sudo spank --min-amplitude 0.5
+    ```
+    
+    Monitor the console to see what amplitudes are causing false positives.
+  </Accordion>
+  
+  <Accordion title="Inconsistent detection">
+    **Problem:** Some slaps trigger, others don't
+    
+    **Possible causes:**
+    - Slapping with inconsistent force
+    - Laptop on soft surface (absorbs impact)
+    - 750ms cooldown preventing rapid slaps
+    
+    **Solution:**
+    - Use consistent force when testing
+    - Place laptop on hard surface
+    - Wait at least 750ms between slaps
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Testing Your Settings
+
+To find your ideal sensitivity:
+
+1. **Start with default:** `sudo spank`
+2. **Slap your laptop** a few times with varying force
+3. **Observe the amplitude values** in the console output
+4. **Adjust the threshold:**
+   - If values are mostly above 0.4: try `--min-amplitude 0.35`
+   - If values are around 0.2-0.3: keep default `0.3`
+   - If values are below 0.2: try `--min-amplitude 0.15`
+
+<Tip>
+  The amplitude values you see in console output are the actual g-forces detected. Use these to set a threshold that matches your desired sensitivity level.
+</Tip>

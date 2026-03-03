@@ -1,0 +1,83 @@
+---
+title: Introduction to Spank
+description: A CLI tool that uses Apple Silicon accelerometer to detect laptop slaps and play audio responses
+---
+
+# What is Spank?
+
+Spank is a CLI tool that turns your MacBook into a responsive audio experience. When you slap your laptop, it yells back. Built using the Apple Silicon accelerometer (Bosch BMI286 IMU), Spank detects physical impacts and plays audio responses in real-time.
+
+<Note>
+  "this is the most amazing thing i've ever seen" — [@kenwheeler](https://x.com/kenwheeler)
+</Note>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Direct hardware access" icon="microchip">
+    Reads accelerometer data directly via IOKit HID with no separate sensor daemon required
+  </Card>
+  
+  <Card title="Single binary" icon="cube">
+    Self-contained executable with embedded audio files and zero external dependencies
+  </Card>
+  
+  <Card title="Multiple modes" icon="sliders">
+    Choose from Pain (default), Sexy (escalating), Halo (gaming), or Custom (your own MP3s)
+  </Card>
+  
+  <Card title="Configurable sensitivity" icon="gauge">
+    Adjust detection threshold from light taps to heavy impacts
+  </Card>
+</CardGroup>
+
+## How it works
+
+Spank uses a sophisticated detection pipeline to identify physical impacts:
+
+1. **Hardware access**: Reads raw accelerometer data directly from the Apple SPU sensor via IOKit HID (requires sudo)
+2. **Signal processing**: Runs vibration detection algorithms (STA/LTA, CUSUM, kurtosis, peak/MAD) on the 3-axis accelerometer stream
+3. **Event detection**: Identifies significant impacts above the configured amplitude threshold
+4. **Audio playback**: Plays an embedded MP3 response with 750ms cooldown to prevent rapid-fire playback
+
+The detection runs at 100Hz polling rate (every 10ms) with sophisticated filtering to distinguish intentional slaps from ambient vibrations.
+
+## What makes Spank unique
+
+**Zero dependencies**: Spank is distributed as a single binary with all audio files embedded using Go's `embed.FS`. No installation of additional packages or audio libraries required.
+
+**Real-time performance**: Processes accelerometer samples in batches of up to 200 per tick, ensuring responsive detection even under heavy system load.
+
+**Intelligent escalation**: In sexy mode, Spank uses an exponential decay algorithm (30-second half-life) to track slap intensity over time. The more you slap within a minute, the more intense the audio response becomes, with 60 levels of escalation based on a 1-exp(-x) curve mapping.
+
+**Production-ready**: Built in Go with proper signal handling, graceful shutdown, and structured error reporting. Can run as a launchd service for boot-time startup.
+
+## Use cases
+
+- **Entertainment**: Turn your laptop into an interactive toy
+- **Frustration release**: Physical feedback when your code won't compile
+- **Ambient awareness**: Audio confirmation that your laptop detected an impact
+- **Custom notifications**: Use `--custom` mode to play your own audio triggers
+
+## System requirements
+
+<Warning>
+  Spank requires macOS on Apple Silicon (M2+) and sudo access for IOKit HID accelerometer access.
+</Warning>
+
+- **Operating system**: macOS on Apple Silicon
+- **Chip**: M2 or newer (uses Bosch BMI286 IMU)
+- **Permissions**: sudo/root privileges for IOKit HID access
+- **Architecture**: arm64
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Download the binary or build from source
+  </Card>
+  
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get to your first successful slap detection
+  </Card>
+</CardGroup>

@@ -1,0 +1,464 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for Spank
+---
+
+This guide covers common problems you might encounter when using Spank and how to resolve them.
+
+## Root Privileges Required
+
+### Error: "spank requires root privileges for accelerometer access"
+
+**Cause:** Spank needs direct access to the Apple Silicon accelerometer via IOKit HID, which requires root permissions.
+
+From `main.go:208-210`:
+
+```go
+if os.Geteuid() != 0 {
+    return fmt.Errorf("spank requires root privileges for accelerometer access, run with: sudo spank")
+}
+```
+
+<Steps>
+  <Step title="Run with sudo">
+    Always prefix your command with `sudo`:
+    
+    ```bash
+    sudo spank
+    sudo spank --sexy
+    sudo spank --custom ~/sounds
+    ```
+  </Step>
+  
+  <Step title="Enter your password">
+    macOS will prompt for your administrator password.
+  </Step>
+  
+  <Step title="Verify root access">
+    If successful, you'll see:
+    
+    ```
+    spank: listening for slaps in pain mode... (ctrl+c to quit)
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Running as root is required and cannot be bypassed. The accelerometer sensor is only accessible via privileged IOKit HID access.
+</Warning>
+
+## Accelerometer Access Issues
+
+### Error: "sensor worker failed" or "creating accel shm"
+
+**Cause:** Failed to initialize shared memory or access the accelerometer sensor.
+
+From `main.go:250-255`:
+
+```go
+accelRing, err := shm.CreateRing(shm.NameAccel)
+if err != nil {
+    return fmt.Errorf("creating accel shm: %w", err)
+}
+```
+
+**Solutions:**
+
+<AccordionGroup>
+  <Accordion title="Verify you're on Apple Silicon">
+    Spank requires macOS on Apple Silicon (M1, M2, M3, etc.).
+    
+    ```bash
+    # Check your chip
+    sysctl machdep.cpu.brand_string
+    ```
+    
+    Intel Macs are not supported (no Bosch BMI286 IMU).
+  </Accordion>
+  
+  <Accordion title="Check for conflicting processes">
+    Another process might be accessing the accelerometer.
+    
+    ```bash
+    # Stop any running spank instances
+    sudo pkill spank
+    
+    # Try again
+    sudo spank
+    ```
+  </Accordion>
+  
+  <Accordion title="Restart and try again">
+    Sometimes the sensor needs a clean initialization:
+    
+    ```bash
+    # Reboot your Mac
+    sudo reboot
+    
+    # After reboot
+    sudo spank
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Audio Playback Problems
+
+### No sound when slapping
+
+**Possible causes:**
+
+1. **System audio is muted** - Check your volume settings
+2. **Detection threshold too high** - Slaps aren't strong enough to trigger
+3. **Speaker initialization failed** - Audio decoding error
+
+**Solutions:**
+
+<Steps>
+  <Step title="Check system volume">
+    Ensure your Mac's volume is turned up and not muted.
+  </Step>
+  
+  <Step title="Lower sensitivity threshold">
+    The default `--min-amplitude` is 0.3. Try lowering it:
+    
+    ```bash
+    sudo spank --min-amplitude 0.1
+    ```
+    
+    This makes detection more sensitive to lighter taps.
+  </Step>
+  
+  <Step title="Test with default mode">
+    If using custom audio, test with the built-in sounds first:
+    
+    ```bash
+    sudo spank
+    ```
+    
+    Then slap your laptop. If you hear sound, your custom files may be the issue.
+  </Step>
+</Steps>
+
+### Audio decode errors
+
+**Error messages like:**
+- `spank: decode /path/to/file.mp3: <error>`
+- `spank: open /path/to/file.mp3: no such file or directory`
+
+From `main.go:361-365`:
+
+```go
+streamer, format, err = mp3.Decode(file)
+if err != nil {
+    fmt.Fprintf(os.Stderr, "spank: decode %s: %v\n", path, err)
+    return
+}
+```
+
+**Solutions:**
+
+<AccordionGroup>
+  <Accordion title="Verify MP3 format">
+    Only MP3 files are supported. Other formats will fail.
+    
+    ```bash
+    # Convert audio to MP3
+    ffmpeg -i input.wav -codec:a libmp3lame output.mp3
+    ```
+  </Accordion>
+  
+  <Accordion title="Check file permissions">
+    Ensure the MP3 files are readable:
+    
+    ```bash
+    ls -l /path/to/your/sounds/
+    chmod 644 /path/to/your/sounds/*.mp3
+    ```
+  </Accordion>
+  
+  <Accordion title="Test file validity">
+    Play the file with another tool to verify it's valid:
+    
+    ```bash
+    afplay your-sound.mp3
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Mode Selection Issues
+
+### Error: "--sexy, --halo, and --custom are mutually exclusive"
+
+**Cause:** You're trying to use multiple modes at once.
+
+From `main.go:212-224`:
+
+```go
+modeCount := 0
+if sexyMode {
+    modeCount++
+}
+if haloMode {
+    modeCount++
+}
+if customPath != "" {
+    modeCount++
+}
+if modeCount > 1 {
+    return fmt.Errorf("--sexy, --halo, and --custom are mutually exclusive; pick one")
+}
+```
+
+**Solution:** Use only one mode flag:
+
+```bash
+# Correct
+sudo spank --sexy
+sudo spank --halo
+sudo spank --custom ~/sounds
+
+# Incorrect - will fail
+sudo spank --sexy --halo
+sudo spank --sexy --custom ~/sounds
+```
+
+### Error: "--min-amplitude must be between 0.0 and 1.0"
+
+**Cause:** Invalid amplitude threshold value.
+
+From `main.go:226-228`:
+
+```go
+if minAmplitude < 0 || minAmplitude > 1 {
+    return fmt.Errorf("--min-amplitude must be between 0.0 and 1.0")
+}
+```
+
+**Solution:** Use a value between 0.0 and 1.0:
+
+```bash
+# Correct
+sudo spank --min-amplitude 0.2
+sudo spank --min-amplitude 0.5
+
+# Incorrect
+sudo spank --min-amplitude 2.0    # too high
+sudo spank --min-amplitude -0.1   # negative
+```
+
+## Detection Issues
+
+### Spank detects slaps but doesn't respond
+
+**Cause:** Cooldown period is active.
+
+Spank has a 750ms cooldown between responses to prevent rapid-fire audio playback.
+
+From `main.go:69` and `main.go:333-335`:
+
+```go
+const slapCooldown = 750 * time.Millisecond
+
+if time.Since(lastYell) <= slapCooldown {
+    continue
+}
+```
+
+**Solution:** Wait at least 750ms between slaps. This is intentional behavior to prevent audio overlap.
+
+### Too sensitive / False positives
+
+**Cause:** Detection threshold is too low.
+
+**Solution:** Increase the `--min-amplitude` value:
+
+```bash
+# Default is 0.3
+sudo spank --min-amplitude 0.4   # less sensitive
+sudo spank --min-amplitude 0.5   # even less sensitive
+```
+
+Higher values require stronger impacts to trigger sounds.
+
+### Not sensitive enough
+
+**Cause:** Detection threshold is too high.
+
+**Solution:** Decrease the `--min-amplitude` value:
+
+```bash
+sudo spank --min-amplitude 0.2   # more sensitive
+sudo spank --min-amplitude 0.1   # very sensitive
+sudo spank --min-amplitude 0.05  # extremely sensitive
+```
+
+<Warning>
+  Very low thresholds (< 0.1) may cause false positives from typing or normal laptop movement.
+</Warning>
+
+## Custom Audio Issues
+
+### Error: "no audio files found in /path/to/directory"
+
+**Cause:** The custom directory is empty or contains only subdirectories.
+
+From `main.go:116-118`:
+
+```go
+if len(sp.files) == 0 {
+    return fmt.Errorf("no audio files found in %s", sp.dir)
+}
+```
+
+**Solution:**
+
+<Steps>
+  <Step title="Verify directory contents">
+    ```bash
+    ls /path/to/your/sounds/
+    ```
+    
+    You should see `.mp3` files listed.
+  </Step>
+  
+  <Step title="Add MP3 files">
+    ```bash
+    cp *.mp3 /path/to/your/sounds/
+    ```
+  </Step>
+  
+  <Step title="Check the path">
+    Ensure you're providing the correct path:
+    
+    ```bash
+    # Use absolute paths
+    sudo spank --custom /Users/you/sounds
+    
+    # Or expand ~ properly
+    sudo spank --custom ~/sounds
+    ```
+  </Step>
+</Steps>
+
+### Error: "loading custom audio: permission denied"
+
+**Cause:** Spank can't read the directory or files.
+
+**Solution:**
+
+```bash
+# Fix directory permissions
+chmod 755 /path/to/your/sounds
+chmod 644 /path/to/your/sounds/*.mp3
+```
+
+## Running as a Service
+
+### Service doesn't start at boot
+
+**Cause:** launchd plist may have errors or incorrect permissions.
+
+**Solutions:**
+
+<AccordionGroup>
+  <Accordion title="Check plist syntax">
+    ```bash
+    plutil -lint /Library/LaunchDaemons/com.taigrr.spank.plist
+    ```
+    
+    Should output: "OK"
+  </Accordion>
+  
+  <Accordion title="Verify plist permissions">
+    ```bash
+    sudo chown root:wheel /Library/LaunchDaemons/com.taigrr.spank.plist
+    sudo chmod 644 /Library/LaunchDaemons/com.taigrr.spank.plist
+    ```
+  </Accordion>
+  
+  <Accordion title="Check logs">
+    ```bash
+    cat /tmp/spank.log
+    cat /tmp/spank.err
+    ```
+    
+    Look for error messages indicating what failed.
+  </Accordion>
+  
+  <Accordion title="Reload the service">
+    ```bash
+    sudo launchctl unload /Library/LaunchDaemons/com.taigrr.spank.plist
+    sudo launchctl load /Library/LaunchDaemons/com.taigrr.spank.plist
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Service stops unexpectedly
+
+**Check the error log:**
+
+```bash
+cat /tmp/spank.err
+```
+
+Common issues:
+- Sensor access failed (see Accelerometer Access Issues above)
+- Audio file problems (if using `--custom`)
+- Conflicting processes
+
+## Getting Help
+
+If you're still experiencing issues:
+
+1. **Check the output** - Spank prints diagnostic information:
+   ```
+   slap #1 [moderate amp=0.42315g] -> audio/pain/ow-1.mp3
+   ```
+
+2. **Run with verbose logging** - Watch for decode errors or sensor failures
+
+3. **Verify your setup:**
+   - Apple Silicon Mac (M1/M2/M3)
+   - macOS (recent version recommended)
+   - Running with `sudo`
+   - Valid MP3 files (if using `--custom`)
+
+4. **Open an issue** - Report bugs at the [GitHub repository](https://github.com/taigrr/spank)
+
+## Quick Diagnostics
+
+Run through this checklist:
+
+<Steps>
+  <Step title="Test default mode">
+    ```bash
+    sudo spank
+    ```
+    
+    Slap your laptop. Does it make sound?
+  </Step>
+  
+  <Step title="Check sensitivity">
+    ```bash
+    sudo spank --min-amplitude 0.1
+    ```
+    
+    Tap gently. Does it detect?
+  </Step>
+  
+  <Step title="Verify audio system">
+    ```bash
+    afplay /System/Library/Sounds/Ping.aiff
+    ```
+    
+    Can you hear system sounds?
+  </Step>
+  
+  <Step title="Check for errors">
+    Look for error messages in the terminal output when running spank.
+  </Step>
+</Steps>
+
+<Note>
+  Most issues are related to root permissions, audio file format, or sensitivity settings. Double-check these first.
+</Note>

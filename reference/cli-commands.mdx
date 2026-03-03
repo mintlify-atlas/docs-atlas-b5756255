@@ -1,0 +1,136 @@
+---
+title: CLI Commands
+description: Complete command-line interface reference for Spank
+---
+
+## Command Usage
+
+```bash
+spank [flags]
+```
+
+Spank reads the Apple Silicon accelerometer directly via IOKit HID and plays audio responses when a slap or hit is detected.
+
+<Warning>
+Requires `sudo` for IOKit HID access to the accelerometer.
+</Warning>
+
+## Flags
+
+### Mode Flags
+
+These flags are mutually exclusive—you can only use one mode at a time.
+
+<ParamField path="--sexy" type="boolean" default="false">
+  Enable sexy mode. Tracks slaps within a rolling window and escalates audio intensity based on frequency. The more you slap within a minute, the more intense the sounds become. Uses 60 levels of escalation.
+  
+  **Short flag:** `-s`
+</ParamField>
+
+<ParamField path="--halo" type="boolean" default="false">
+  Enable Halo mode. Plays random audio clips from Halo soundtracks on each slap.
+  
+  **Short flag:** `-H`
+</ParamField>
+
+<ParamField path="--custom" type="string" default="">
+  Path to custom MP3 audio directory. Spank will randomly play MP3 files from this directory when slaps are detected. All files must be MP3 format.
+  
+  **Short flag:** `-c`
+  
+  **Example:**
+  ```bash
+  sudo spank --custom /path/to/my/sounds
+  ```
+</ParamField>
+
+### Detection Flags
+
+<ParamField path="--min-amplitude" type="float64" default="0.3">
+  Minimum amplitude threshold for slap detection (range: 0.0-1.0). Lower values make the detector more sensitive to lighter taps; higher values require stronger impacts.
+  
+  The value represents the minimum acceleration amplitude in g-force required to trigger a sound.
+  
+  **Recommended values:**
+  - `0.05-0.10`: Very sensitive, detects light taps
+  - `0.15-0.30`: Balanced sensitivity (default: 0.3)
+  - `0.30-0.50`: Only strong impacts trigger sounds
+  
+  **Example:**
+  ```bash
+  sudo spank --min-amplitude 0.1  # More sensitive
+  sudo spank --sexy --min-amplitude 0.2
+  ```
+</ParamField>
+
+### Standard Flags
+
+<ParamField path="--version" type="boolean">
+  Display the version number and exit.
+</ParamField>
+
+<ParamField path="--help" type="boolean">
+  Display help information and exit.
+  
+  **Short flag:** `-h`
+</ParamField>
+
+## Examples
+
+### Basic Usage
+
+```bash
+# Normal mode — says "ow!" when slapped
+sudo spank
+
+# Sexy mode — escalating responses based on slap frequency
+sudo spank --sexy
+
+# Halo mode — plays Halo death sounds when slapped
+sudo spank --halo
+```
+
+### Custom Audio
+
+```bash
+# Use your own MP3 files from a directory
+sudo spank --custom /path/to/mp3s
+```
+
+### Adjusting Sensitivity
+
+```bash
+# More sensitive (detects lighter taps)
+sudo spank --min-amplitude 0.1
+
+# Less sensitive (requires harder hits)
+sudo spank --min-amplitude 0.5
+
+# Combine with mode flags
+sudo spank --sexy --min-amplitude 0.2
+```
+
+## Exit Codes
+
+- `0`: Successful execution (typically via Ctrl+C)
+- `1`: Error occurred (missing sudo, invalid flags, sensor failure, etc.)
+
+## Behavior Details
+
+### Cooldown Period
+
+Spank enforces a 750ms cooldown between audio responses to prevent rapid-fire playback. If multiple slaps are detected within this window, only the first triggers audio.
+
+See `slapCooldown` constant in main.go:69.
+
+### Mode Restrictions
+
+The `--sexy`, `--halo`, and `--custom` flags cannot be combined. Attempting to use multiple mode flags will result in an error:
+
+```
+--sexy, --halo, and --custom are mutually exclusive; pick one
+```
+
+### Default Mode
+
+When no mode flag is specified, Spank runs in **pain mode** (default), which randomly plays from 10 embedded pain/protest audio clips.

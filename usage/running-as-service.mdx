@@ -1,0 +1,356 @@
+---
+title: 'Running as a Service'
+description: 'Configure Spank to start automatically at boot using macOS launchd'
+---
+
+You can configure Spank to run automatically in the background as a macOS launchd service. This allows your MacBook to respond to slaps immediately after boot without manually starting the CLI.
+
+## Overview
+
+Running Spank as a service:
+- Starts automatically at boot
+- Restarts automatically if it crashes (`KeepAlive`)
+- Runs with root privileges (required for accelerometer access)
+- Logs output to `/tmp/spank.log` and `/tmp/spank.err`
+
+---
+
+## Creating the launchd Plist
+
+A launchd plist is an XML configuration file that tells macOS how to run your service. Choose the configuration that matches your desired mode:
+
+<Tabs>
+  <Tab title="Pain Mode (Default)">
+    ```bash
+    sudo tee /Library/LaunchDaemons/com.taigrr.spank.plist > /dev/null << 'EOF'
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+      "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>com.taigrr.spank</string>
+        <key>ProgramArguments</key>
+        <array>
+            <string>/usr/local/bin/spank</string>
+        </array>
+        <key>RunAtLoad</key>
+        <true/>
+        <key>KeepAlive</key>
+        <true/>
+        <key>StandardOutPath</key>
+        <string>/tmp/spank.log</string>
+        <key>StandardErrorPath</key>
+        <string>/tmp/spank.err</string>
+    </dict>
+    </plist>
+    EOF
+    ```
+  </Tab>
+  
+  <Tab title="Sexy Mode">
+    ```bash
+    sudo tee /Library/LaunchDaemons/com.taigrr.spank.plist > /dev/null << 'EOF'
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+      "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>com.taigrr.spank</string>
+        <key>ProgramArguments</key>
+        <array>
+            <string>/usr/local/bin/spank</string>
+            <string>--sexy</string>
+        </array>
+        <key>RunAtLoad</key>
+        <true/>
+        <key>KeepAlive</key>
+        <true/>
+        <key>StandardOutPath</key>
+        <string>/tmp/spank.log</string>
+        <key>StandardErrorPath</key>
+        <string>/tmp/spank.err</string>
+    </dict>
+    </plist>
+    EOF
+    ```
+  </Tab>
+  
+  <Tab title="Halo Mode">
+    ```bash
+    sudo tee /Library/LaunchDaemons/com.taigrr.spank.plist > /dev/null << 'EOF'
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+      "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>com.taigrr.spank</string>
+        <key>ProgramArguments</key>
+        <array>
+            <string>/usr/local/bin/spank</string>
+            <string>--halo</string>
+        </array>
+        <key>RunAtLoad</key>
+        <true/>
+        <key>KeepAlive</key>
+        <true/>
+        <key>StandardOutPath</key>
+        <string>/tmp/spank.log</string>
+        <key>StandardErrorPath</key>
+        <string>/tmp/spank.err</string>
+    </dict>
+    </plist>
+    EOF
+    ```
+  </Tab>
+  
+  <Tab title="Custom Mode">
+    ```bash
+    sudo tee /Library/LaunchDaemons/com.taigrr.spank.plist > /dev/null << 'EOF'
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+      "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>com.taigrr.spank</string>
+        <key>ProgramArguments</key>
+        <array>
+            <string>/usr/local/bin/spank</string>
+            <string>--custom</string>
+            <string>/path/to/your/mp3s</string>
+        </array>
+        <key>RunAtLoad</key>
+        <true/>
+        <key>KeepAlive</key>
+        <true/>
+        <key>StandardOutPath</key>
+        <string>/tmp/spank.log</string>
+        <key>StandardErrorPath</key>
+        <string>/tmp/spank.err</string>
+    </dict>
+    </plist>
+    EOF
+    ```
+    
+    <Warning>
+      Remember to replace `/path/to/your/mp3s` with the actual path to your custom MP3 directory.
+    </Warning>
+  </Tab>
+</Tabs>
+
+<Note>
+  **Update the binary path:** If you installed Spank elsewhere (e.g., `~/go/bin/spank`), update the `<string>/usr/local/bin/spank</string>` line to match your installation path.
+</Note>
+
+---
+
+## Understanding the Plist Keys
+
+| Key | Value | Purpose |
+|-----|-------|----------|
+| `Label` | `com.taigrr.spank` | Unique identifier for the service |
+| `ProgramArguments` | Array of strings | Command and flags to execute |
+| `RunAtLoad` | `true` | Start the service immediately when loaded |
+| `KeepAlive` | `true` | Automatically restart if the process exits |
+| `StandardOutPath` | `/tmp/spank.log` | Where to write stdout logs |
+| `StandardErrorPath` | `/tmp/spank.err` | Where to write stderr logs |
+
+**Why no `UserName` key?**
+
+Since the plist is in `/Library/LaunchDaemons` (system-wide) and has no `UserName` key, launchd runs it as root automatically. This is necessary because Spank requires root privileges for IOKit HID accelerometer access.
+
+**Source:** `README.md:176`
+
+---
+
+## Loading and Starting the Service
+
+Once you've created the plist file, load it with launchd:
+
+```bash
+sudo launchctl load /Library/LaunchDaemons/com.taigrr.spank.plist
+```
+
+The service will:
+1. Start immediately (due to `RunAtLoad`)
+2. Start automatically on every boot
+3. Restart automatically if it crashes
+
+**Source:** `README.md:172-174`
+
+---
+
+## Stopping and Unloading the Service
+
+To temporarily stop the service without removing it:
+
+```bash
+sudo launchctl stop com.taigrr.spank
+```
+
+To unload the service completely (won't start at boot):
+
+```bash
+sudo launchctl unload /Library/LaunchDaemons/com.taigrr.spank.plist
+```
+
+**Source:** `README.md:180-182`
+
+<Note>
+  Use `stop` for temporary shutdowns. Use `unload` when you want to disable the service permanently or before deleting/editing the plist file.
+</Note>
+
+---
+
+## Viewing Logs
+
+Spank outputs logs to two files:
+
+<CodeGroup>
+```bash Standard Output
+tail -f /tmp/spank.log
+```
+
+```bash Error Output
+tail -f /tmp/spank.err
+```
+
+```bash Both Logs
+tail -f /tmp/spank.log /tmp/spank.err
+```
+</CodeGroup>
+
+**Example log output:**
+
+```
+spank: listening for slaps in sexy mode... (ctrl+c to quit)
+slap #1 [moderate amp=0.32000g] -> audio/sexy/001.mp3
+slap #2 [strong amp=0.48000g] -> audio/sexy/003.mp3
+slap #3 [strong amp=0.55000g] -> audio/sexy/007.mp3
+```
+
+---
+
+## Adding Sensitivity Settings
+
+You can add the `--min-amplitude` flag to your plist configuration:
+
+```xml
+<key>ProgramArguments</key>
+<array>
+    <string>/usr/local/bin/spank</string>
+    <string>--sexy</string>
+    <string>--min-amplitude</string>
+    <string>0.25</string>
+</array>
+```
+
+<Tip>
+  Each argument must be a separate `<string>` element in the array. The flag and its value are split into two elements.
+</Tip>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Service won't start">
+    **Check the error log:**
+    ```bash
+    cat /tmp/spank.err
+    ```
+    
+    **Common issues:**
+    - Incorrect binary path in plist
+    - Spank binary not executable: `chmod +x /usr/local/bin/spank`
+    - Invalid plist XML syntax
+    
+    **Verify plist syntax:**
+    ```bash
+    plutil -lint /Library/LaunchDaemons/com.taigrr.spank.plist
+    ```
+  </Accordion>
+  
+  <Accordion title="Service starts but doesn't detect slaps">
+    **Check if the process is running:**
+    ```bash
+    sudo launchctl list | grep spank
+    ```
+    
+    **Check the logs:**
+    ```bash
+    tail -f /tmp/spank.log
+    ```
+    
+    You should see: `spank: listening for slaps in [mode] mode...`
+    
+    If not, check `/tmp/spank.err` for errors.
+  </Accordion>
+  
+  <Accordion title="Changes to plist not taking effect">
+    After editing the plist file, you must unload and reload it:
+    
+    ```bash
+    sudo launchctl unload /Library/LaunchDaemons/com.taigrr.spank.plist
+    sudo launchctl load /Library/LaunchDaemons/com.taigrr.spank.plist
+    ```
+  </Accordion>
+  
+  <Accordion title="Service keeps restarting">
+    If Spank is crashing repeatedly, check the error log:
+    
+    ```bash
+    cat /tmp/spank.err
+    ```
+    
+    **Common causes:**
+    - Accelerometer access denied (requires sudo/root)
+    - Custom audio directory doesn't exist
+    - Invalid command-line flags
+    
+    To prevent restart loop, unload the service:
+    ```bash
+    sudo launchctl unload /Library/LaunchDaemons/com.taigrr.spank.plist
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Removing the Service
+
+To completely remove Spank as a service:
+
+```bash
+# Unload the service
+sudo launchctl unload /Library/LaunchDaemons/com.taigrr.spank.plist
+
+# Delete the plist file
+sudo rm /Library/LaunchDaemons/com.taigrr.spank.plist
+
+# Optional: Delete log files
+rm /tmp/spank.log /tmp/spank.err
+```
+
+---
+
+## Security Considerations
+
+<Warning>
+  Running Spank as a system-wide service means it always has root access to your accelerometer. Only install this service on machines you control.
+</Warning>
+
+**What Spank accesses:**
+- IOKit HID interface for accelerometer data
+- Audio output device
+- File system (only to read embedded/custom MP3s)
+
+**What Spank does NOT access:**
+- Network (no internet connection required)
+- Your files (beyond the custom MP3 directory if specified)
+- Keyboard or mouse input
+
+**Source code reference:** `main.go:1-393` (entire implementation is transparent and open source)

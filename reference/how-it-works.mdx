@@ -1,0 +1,219 @@
+---
+title: How It Works
+description: Technical explanation of Spank's accelerometer reading and vibration detection
+---
+
+## Overview
+
+Spank detects physical impacts on your MacBook by reading the Apple Silicon accelerometer directly via IOKit HID and running vibration detection algorithms on the raw sensor data.
+
+## Architecture
+
+### 1. Accelerometer Access via IOKit HID
+
+Spank uses the **IOKit HID framework** to read raw accelerometer data from the Apple Silicon System Performance Unit (SPU) sensor.
+
+- **Sensor:** Bosch BMI286 IMU (Inertial Measurement Unit)
+- **Interface:** IOKit HID (Human Interface Device) API
+- **Access requirement:** Root privileges (`sudo`) are required to access IOKit HID devices
+
+The sensor worker runs in a background goroutine with CFRunLoop for continuous data streaming. Data is written to shared memory for efficient inter-thread communication.
+
+**Source:** main.go:250-268
+
+```go
+// Create shared memory for accelerometer data
+accelRing, err := shm.CreateRing(shm.NameAccel)
+
+// Start sensor worker in background
+go func() {
+    close(sensorReady)
+    if err := sensor.Run(sensor.Config{
+        AccelRing: accelRing,
+        Restarts:  0,
+    }); err != nil {
+        sensorErr <- err
+    }
+}()
+```
+
+### 2. Shared Memory Ring Buffer
+
+Accelerometer samples are written to a **ring buffer in shared memory** (`shm.RingBuffer`) for lock-free, high-performance data transfer between the sensor worker and detection logic.
+
+- **Polling interval:** 10ms (100 Hz)
+- **Batch size:** Up to 200 samples per tick to avoid falling behind
+- **Startup delay:** 100ms to allow sensor to begin producing data
+
+**Source:** main.go:72-79
+
+```go
+const (
+    sensorPollInterval = 10 * time.Millisecond
+    maxSampleBatch = 200
+    sensorStartupDelay = 100 * time.Millisecond
+)
+```
+
+### 3. Vibration Detection Algorithm
+
+Spank uses a multi-stage vibration detection pipeline to identify physical impacts. The detection is performed by the `detector.New()` from the `github.com/taigrr/apple-silicon-accelerometer/detector` package.
+
+**Detection techniques include:**
+
+- **STA/LTA** (Short-Term Average / Long-Term Average): Compares recent signal amplitude to historical baseline to detect sudden changes
+- **CUSUM** (Cumulative Sum): Detects sustained deviations from the mean
+- **Kurtosis**: Measures the "tailedness" of the acceleration distribution to identify sharp spikes
+- **Peak/MAD** (Peak / Median Absolute Deviation): Identifies outlier peaks in the signal
+
+Each accelerometer sample (X, Y, Z axes) is processed in real-time:
+
+**Source:** main.go:318-321
+
+```go
+for idx, sample := range samples {
+    tSample := tNow - float64(nSamples-idx-1)/float64(det.FS)
+    det.Process(sample.X, sample.Y, sample.Z, tSample)
+}
+```
+
+### 4. Event Filtering
+
+After the detector generates vibration events, Spank applies additional filters:
+
+#### Amplitude Threshold
+
+Only events exceeding the `--min-amplitude` threshold (default: 0.3g) trigger audio responses. This filters out minor vibrations from typing or desk movement.
+
+**Source:** main.go:336-338
+
+```go
+if ev.Amplitude < minAmplitude {
+    continue
+}
+```
+
+#### Cooldown Mechanism
+
+A **750ms cooldown period** prevents rapid-fire audio playback. If multiple slaps are detected within this window, only the first triggers a sound.
+
+**Source:** main.go:69, 333-335
+
+```go
+const slapCooldown = 750 * time.Millisecond
+
+if time.Since(lastYell) <= slapCooldown {
+    continue
+}
+```
+
+#### Deduplication
+
+Events are deduplicated by timestamp to ensure the same physical impact doesn't trigger multiple responses.
+
+**Source:** main.go:328-331
+
+```go
+if ev.Time == lastEventTime {
+    continue
+}
+lastEventTime = ev.Time
+```
+
+### 5. Audio Playback
+
+When a valid slap is detected, Spank selects and plays an MP3 audio file:
+
+#### Mode Behavior
+
+- **Pain mode** (default): Random selection from 10 embedded pain audio clips
+- **Halo mode** (`--halo`): Random selection from embedded Halo death sounds
+- **Custom mode** (`--custom`): Random selection from user-provided MP3 directory
+- **Sexy mode** (`--sexy`): **Escalation-based selection** (see below)
+
+#### Sexy Mode Escalation
+
+Sexy mode uses an **exponential decay scoring system** to track slap intensity over time:
+
+**Source:** main.go:122-175
+
+```go
+const decayHalfLife = 30.0  // seconds
+
+func (st *slapTracker) record(now time.Time) (int, float64) {
+    // Decay score based on time elapsed
+    elapsed := now.Sub(st.lastTime).Seconds()
+    st.score *= math.Pow(0.5, elapsed/st.halfLife)
+    
+    // Add 1.0 for this slap
+    st.score += 1.0
+    return st.total, st.score
+}
+```
+
+- **Decay half-life:** 30 seconds (score halves every 30 seconds of inactivity)
+- **Escalation curve:** `1 - exp(-(score-1)/scale)` maps score to file index (0-59)
+- **File selection:** Higher scores select more intense audio files from the escalation sequence
+
+At sustained maximum slap rate (one per cooldown period), the score converges to a steady-state maximum that maps to the final (most intense) audio file.
+
+### 6. Audio Decoding & Speaker
+
+Spank uses the **beep** library for audio playback:
+
+- **Format:** MP3 (decoded on-the-fly)
+- **Embedded audio:** Files are embedded in the binary using `//go:embed` directives
+- **Concurrency:** Each slap spawns a goroutine for non-blocking playback
+- **Speaker initialization:** Lazy initialization on first playback
+
+**Source:** main.go:350-392
+
+## Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. IOKit HID reads accelerometer (Bosch BMI286 IMU)        │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 2. Sensor worker writes samples to shared memory ring      │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 3. Main loop polls ring buffer every 10ms                  │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 4. Vibration detector processes X/Y/Z samples              │
+│    - STA/LTA, CUSUM, kurtosis, peak/MAD                    │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 5. Filter events by amplitude & cooldown                   │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 6. Select audio file (mode-dependent logic)                │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 7. Decode MP3 and play via beep speaker                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Performance Characteristics
+
+- **Latency:** Typically &lt;100ms from physical impact to audio playback start
+- **CPU usage:** Minimal (&lt;1% on M2/M3 during idle monitoring)
+- **Memory footprint:** ~10-15 MB (including embedded audio)
+- **Sensor sampling rate:** Varies by hardware (typically 100-200 Hz)
+
+## Credits
+
+Sensor reading and vibration detection algorithms ported from [olvvier/apple-silicon-accelerometer](https://github.com/olvvier/apple-silicon-accelerometer).

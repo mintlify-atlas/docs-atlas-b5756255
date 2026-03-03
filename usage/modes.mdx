@@ -1,0 +1,201 @@
+---
+title: 'Modes'
+description: 'Choose how Spank responds to slaps with different audio modes'
+---
+
+Spank supports four different modes that control which audio files are played when you slap your MacBook. Modes are mutually exclusive — you can only run one mode at a time.
+
+## Pain Mode (Default)
+
+The default mode plays random pain and protest sounds when your laptop is slapped.
+
+```bash
+sudo spank
+```
+
+**Behavior:**
+- Randomly selects from 10 embedded pain/protest audio clips
+- Each slap triggers a different random sound
+- No escalation or progression
+
+**Code Reference:** `main.go:239`
+
+```go
+default:
+    pack = &soundPack{name: "pain", fs: painAudio, dir: "audio/pain", mode: modeRandom}
+```
+
+---
+
+## Sexy Mode
+
+Sexy mode features an escalating audio response system that intensifies based on how frequently you slap your MacBook.
+
+```bash
+sudo spank --sexy
+# or use the short flag
+sudo spank -s
+```
+
+### How Escalation Works
+
+Sexy mode uses a sophisticated intensity tracking system with exponential decay:
+
+<AccordionGroup>
+  <Accordion title="Escalation Algorithm">
+    - **Intensity Score**: Each slap adds 1.0 to your intensity score
+    - **Decay Half-Life**: 30 seconds (configurable via `decayHalfLife` constant in `main.go:66`)
+    - **File Mapping**: Score maps to 60 different audio files using a `1-exp(-x)` curve
+    - **Sustained Slapping**: At maximum slap rate (one per 750ms cooldown), the score converges to reach the final, most intense audio file
+  </Accordion>
+  
+  <Accordion title="Score Calculation (main.go:147-159)">
+    ```go
+    if !st.lastTime.IsZero() {
+        elapsed := now.Sub(st.lastTime).Seconds()
+        st.score *= math.Pow(0.5, elapsed/st.halfLife)
+    }
+    st.score += 1.0
+    ```
+    
+    The score decays exponentially when you stop slapping:
+    - After 30 seconds of inactivity: intensity halves
+    - After 60 seconds: intensity is at 25% of peak
+    - After 90 seconds: intensity is at 12.5% of peak
+  </Accordion>
+  
+  <Accordion title="File Selection (main.go:166-174)">
+    ```go
+    // Escalation: 1-exp(-x) curve maps score to file index
+    maxIdx := len(st.pack.files) - 1
+    idx := int(float64(len(st.pack.files)) * (1.0 - math.Exp(-(score-1)/st.scale)))
+    if idx > maxIdx {
+        idx = maxIdx
+    }
+    return st.pack.files[idx]
+    ```
+    
+    The exponential curve ensures smooth progression from mild to intense responses.
+  </Accordion>
+</AccordionGroup>
+
+**Example Output:**
+
+```bash
+slap #1 [moderate amp=0.45000g] -> audio/sexy/001.mp3
+slap #2 [strong amp=0.52000g] -> audio/sexy/003.mp3
+slap #5 [strong amp=0.48000g] -> audio/sexy/012.mp3
+slap #20 [strong amp=0.55000g] -> audio/sexy/058.mp3
+```
+
+<Note>
+  Sexy mode tracks your slapping intensity over a rolling time window. The more consistently you slap, the more intense the audio becomes. Stop slapping and the intensity naturally decays back to lower levels.
+</Note>
+
+**Code Reference:** `main.go:235`
+
+```go
+case sexyMode:
+    pack = &soundPack{name: "sexy", fs: sexyAudio, dir: "audio/sexy", mode: modeEscalation}
+```
+
+---
+
+## Halo Mode
+
+Halo mode plays random death sound effects from the Halo video game series.
+
+```bash
+sudo spank --halo
+# or use the short flag
+sudo spank -H
+```
+
+**Behavior:**
+- Randomly selects from embedded Halo audio clips
+- Each slap triggers a different random game sound
+- No escalation (same as Pain mode behavior, different audio files)
+
+**Code Reference:** `main.go:237`
+
+```go
+case haloMode:
+    pack = &soundPack{name: "halo", fs: haloAudio, dir: "audio/halo", mode: modeRandom}
+```
+
+---
+
+## Custom Mode
+
+Custom mode lets you use your own MP3 files instead of the built-in audio packs.
+
+```bash
+sudo spank --custom /path/to/mp3s
+# or use the short flag
+sudo spank -c ~/my-sounds
+```
+
+**Requirements:**
+- Directory must contain at least one `.mp3` file
+- All files in the directory will be loaded (subdirectories are ignored)
+- Files are sorted alphabetically
+
+**Behavior:**
+- Randomly selects from your MP3 files
+- No escalation (random mode only)
+
+**Code Reference:** `main.go:233`
+
+```go
+case customPath != "":
+    pack = &soundPack{name: "custom", dir: customPath, mode: modeRandom, custom: true}
+```
+
+<Warning>
+  If Spank cannot find any MP3 files in the specified directory, it will exit with an error: `no audio files found in /path/to/dir`
+</Warning>
+
+---
+
+## Mode Restrictions
+
+You cannot combine multiple modes. The flags `--sexy`, `--halo`, and `--custom` are mutually exclusive.
+
+```bash
+# This will fail:
+sudo spank --sexy --halo
+# Error: --sexy, --halo, and --custom are mutually exclusive; pick one
+```
+
+**Code Reference:** `main.go:212-224`
+
+```go
+modeCount := 0
+if sexyMode {
+    modeCount++
+}
+if haloMode {
+    modeCount++
+}
+if customPath != "" {
+    modeCount++
+}
+if modeCount > 1 {
+    return fmt.Errorf("--sexy, --halo, and --custom are mutually exclusive; pick one")
+}
+```
+
+---
+
+## Cooldown Period
+
+All modes enforce a 750ms cooldown between audio playbacks to prevent rapid-fire sounds.
+
+**Code Reference:** `main.go:69`
+
+```go
+// slapCooldown prevents rapid-fire audio playback.
+slapCooldown = 750 * time.Millisecond
+```
+
+If you slap twice within 750ms, the second slap will be detected but no audio will play. The console will still increment the slap counter.

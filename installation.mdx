@@ -1,0 +1,179 @@
+---
+title: Installation
+description: Install Spank via binary download or build from source
+---
+
+# Installation
+
+Spank can be installed by downloading a pre-built binary or building from source.
+
+## System requirements
+
+Before installing, verify your system meets these requirements:
+
+- **Operating system**: macOS on Apple Silicon
+- **Chip**: M2 or newer (M2, M3, M4, etc.)
+- **Permissions**: sudo access for IOKit HID
+- **Architecture**: arm64
+
+<Warning>
+  Spank requires root privileges to access the accelerometer via IOKit HID. You'll need to run it with `sudo spank`.
+</Warning>
+
+## Method 1: Download binary release
+
+The fastest way to get started is to download a pre-built binary from GitHub releases.
+
+<Steps>
+  <Step title="Download the latest release">
+    Visit the [latest release](https://github.com/taigrr/spank/releases/latest) page and download the binary for macOS ARM64.
+  </Step>
+  
+  <Step title="Make it executable">
+    ```bash
+    chmod +x spank
+    ```
+  </Step>
+  
+  <Step title="Move to your PATH">
+    ```bash
+    sudo mv spank /usr/local/bin/
+    ```
+    
+    This makes `spank` available system-wide.
+  </Step>
+  
+  <Step title="Verify installation">
+    ```bash
+    spank --version
+    ```
+    
+    You should see the version number printed.
+  </Step>
+</Steps>
+
+## Method 2: Build from source
+
+Build Spank from source if you want the latest development version or need to modify the code.
+
+<Note>
+  Building from source requires Go 1.26 or later.
+</Note>
+
+<Steps>
+  <Step title="Install using go install">
+    ```bash
+    go install github.com/taigrr/spank@latest
+    ```
+    
+    This downloads the source, compiles it, and installs the binary to `$GOPATH/bin` (typically `~/go/bin`).
+  </Step>
+  
+  <Step title="Verify installation">
+    ```bash
+    ~/go/bin/spank --version
+    ```
+  </Step>
+  
+  <Step title="Optional: Add to PATH">
+    If `~/go/bin` isn't in your PATH, add it to your shell profile:
+    
+    ```bash
+    export PATH="$HOME/go/bin:$PATH"
+    ```
+    
+    Then reload your shell or run `source ~/.zshrc` (or `~/.bash_profile`).
+  </Step>
+</Steps>
+
+### Alternative: Clone and build manually
+
+For development or customization:
+
+```bash
+# Clone the repository
+git clone https://github.com/taigrr/spank.git
+cd spank
+
+# Build the binary
+go build -o spank .
+
+# Run it
+sudo ./spank
+```
+
+## Verify installation
+
+Test that Spank is correctly installed and has the necessary permissions:
+
+```bash
+sudo spank
+```
+
+You should see:
+
+```
+spank: listening for slaps in pain mode... (ctrl+c to quit)
+```
+
+Now slap your laptop gently. If you see output like:
+
+```
+slap #1 [medium amp=0.45231g] -> audio/pain/ow-03.mp3
+```
+
+You're all set!
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Permission denied error">
+    Spank requires root privileges for accelerometer access. Make sure you're running with `sudo`:
+    
+    ```bash
+    sudo spank
+    ```
+    
+    From main.go:208-210, the check is:
+    
+    ```go
+    if os.Geteuid() != 0 {
+        return fmt.Errorf("spank requires root privileges for accelerometer access, run with: sudo spank")
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Unsupported hardware">
+    Spank requires Apple Silicon M2 or newer. M1 chips use a different accelerometer sensor and are not currently supported.
+    
+    Verify your chip:
+    
+    ```bash
+    sysctl -n machdep.cpu.brand_string
+    ```
+  </Accordion>
+  
+  <Accordion title="go: command not found">
+    If building from source, you need Go installed. Download it from [go.dev/dl](https://go.dev/dl/) or install via Homebrew:
+    
+    ```bash
+    brew install go
+    ```
+  </Accordion>
+  
+  <Accordion title="Binary architecture mismatch">
+    Ensure you downloaded the ARM64 binary, not x86_64. Check with:
+    
+    ```bash
+    file /usr/local/bin/spank
+    ```
+    
+    Should output: `Mach-O 64-bit executable arm64`
+  </Accordion>
+</AccordionGroup>
+
+## Next steps
+
+<Card title="Quickstart" icon="rocket" href="/quickstart">
+  Learn how to use Spank's different modes and customize sensitivity
+</Card>

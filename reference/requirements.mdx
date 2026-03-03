@@ -1,0 +1,185 @@
+---
+title: Requirements
+description: System requirements and dependencies for running Spank
+---
+
+## System Requirements
+
+### Operating System
+
+<ParamField path="macOS" type="required">
+  Spank only runs on **macOS**. Other operating systems (Linux, Windows) are not supported because the accelerometer access depends on macOS-specific IOKit HID APIs.
+</ParamField>
+
+### Hardware
+
+<ParamField path="Apple Silicon" type="required">
+  Spank requires **Apple Silicon M2 or newer** chips.
+  
+  **Supported:**
+  - M2, M2 Pro, M2 Max, M2 Ultra
+  - M3, M3 Pro, M3 Max, M3 Ultra
+  - M4, M4 Pro, M4 Max (and future Apple Silicon releases)
+  
+  **Not supported:**
+  - Intel-based Macs (no accessible accelerometer)
+  - M1 series (accelerometer hardware/driver differences)
+</ParamField>
+
+### Privileges
+
+<ParamField path="Root (sudo)" type="required">
+  Spank **must** run with root privileges (`sudo`) to access the IOKit HID accelerometer device.
+  
+  **Why sudo is required:**
+  - IOKit HID framework requires elevated permissions to open hardware device connections
+  - The Bosch BMI286 IMU sensor is accessed as a protected system device
+  - macOS security policies restrict non-root access to raw sensor data
+  
+  **Running without sudo:**
+  ```bash
+  $ spank
+  Error: spank requires root privileges for accelerometer access, run with: sudo spank
+  ```
+  
+  **Source:** main.go:208-210
+</ParamField>
+
+<Warning>
+  Always verify the integrity of the Spank binary before running with `sudo`. Download only from the [official GitHub releases](https://github.com/taigrr/spank/releases) or build from source.
+</Warning>
+
+## Software Dependencies
+
+### Runtime Dependencies
+
+Spank is a **single statically-linked binary** with no external runtime dependencies. All required libraries are compiled into the executable:
+
+- Audio playback libraries (beep, oto)
+- MP3 decoder (go-mp3)
+- Accelerometer sensor libraries (apple-silicon-accelerometer)
+- Embedded audio files (pain/sexy/halo modes)
+
+No installation of additional frameworks, audio drivers, or system libraries is required.
+
+### Build Dependencies
+
+If building from source, you need:
+
+<ParamField path="Go" type="build-only">
+  **Go 1.26 or later** is required to compile Spank.
+  
+  See go.mod:3 for the minimum Go version.
+  
+  Install Go from [golang.org](https://golang.org/dl/) or via Homebrew:
+  ```bash
+  brew install go
+  ```
+</ParamField>
+
+## Installation Methods
+
+### Pre-built Binary (Recommended)
+
+Download the latest release from GitHub:
+
+```bash
+# Download from releases page
+open https://github.com/taigrr/spank/releases/latest
+
+# Make executable
+chmod +x spank
+
+# Move to PATH (optional)
+sudo mv spank /usr/local/bin/
+```
+
+### Build from Source
+
+Requires Go 1.26+:
+
+```bash
+go install github.com/taigrr/spank@latest
+```
+
+The binary will be installed to `~/go/bin/spank` (or `$GOPATH/bin/spank`).
+
+## Permissions & Security
+
+### IOKit HID Access
+
+Spank uses the **IOKit HID framework** to read accelerometer data directly from the hardware. This is a low-level macOS API that requires root privileges.
+
+**What Spank accesses:**
+- Bosch BMI286 IMU sensor (accelerometer + gyroscope)
+- Reads 3-axis acceleration data (X, Y, Z) at ~100-200 Hz
+- No network access, no file system writes (except audio playback)
+
+**Security considerations:**
+- Spank does **not** require Full Disk Access
+- Spank does **not** require Accessibility permissions
+- Spank does **not** require Screen Recording permissions
+- Running with `sudo` grants IOKit access but does not expose other system resources
+
+### Running as a Service
+
+When configured as a launchd service (see [Usage Guide](/usage/running-as-service)), Spank runs as root automatically. The launchd plist should be placed in `/Library/LaunchDaemons/` (system-level) rather than `~/Library/LaunchAgents/` (user-level).
+
+**Source:** README.md:70-183
+
+## Compatibility Matrix
+
+| Component | Requirement | Notes |
+|-----------|-------------|-------|
+| **macOS Version** | 12.0+ (Monterey or later) | Older versions may work but are untested |
+| **Chip** | Apple Silicon M2+ | M1 not supported due to hardware differences |
+| **Architecture** | ARM64 | Intel x86_64 not supported |
+| **Privileges** | Root (`sudo`) | Required for IOKit HID access |
+| **Audio Output** | Built-in or external speakers | Any macOS-compatible audio device |
+
+## Troubleshooting
+
+### "Permission denied" errors
+
+**Symptom:** Cannot access accelerometer
+
+**Solution:** Always run with `sudo`:
+```bash
+sudo spank
+```
+
+### "No such device" errors
+
+**Symptom:** Accelerometer device not found
+
+**Possible causes:**
+- Running on Intel Mac (not supported)
+- Running on M1 chip (not supported)
+- Sensor driver not loaded (rare, try reboot)
+
+### No audio output
+
+**Symptom:** Slaps are detected but no sound plays
+
+**Possible causes:**
+- System volume muted
+- Audio output device disconnected
+- Check logs for MP3 decode errors
+
+## Verifying Requirements
+
+Check your system meets the requirements:
+
+```bash
+# Check macOS version
+sw_vers
+
+# Check chip type (should show "Apple M2" or later)
+sysctl -n machdep.cpu.brand_string
+
+# Check architecture (should show "arm64")
+uname -m
+
+# Check Go version (if building from source)
+go version
+```

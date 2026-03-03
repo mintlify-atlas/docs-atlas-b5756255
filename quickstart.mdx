@@ -1,80 +1,225 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get to your first successful slap detection in minutes
 ---
 
-## Get started in three steps
+# Quickstart
 
-Get your documentation site running locally and make your first customization.
+This guide gets you from installation to your first successful slap detection.
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+<Steps>
+  <Step title="Run Spank with default settings">
+    Start Spank in pain mode (the default):
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```bash
+    sudo spank
+    ```
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    You should see:
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```
+    spank: listening for slaps in pain mode... (ctrl+c to quit)
+    ```
+    
+    <Note>
+      Spank requires sudo for IOKit HID access to the accelerometer. This is a hardware requirement.
+    </Note>
+  </Step>
+  
+  <Step title="Slap your laptop">
+    Gently slap the palm rest or keyboard area of your MacBook. You should hear an audio response ("ow!") and see console output:
+    
+    ```
+    slap #1 [medium amp=0.45231g] -> audio/pain/ow-03.mp3
+    ```
+    
+    The output shows:
+    - Slap number (sequential counter)
+    - Severity classification (light/medium/hard)
+    - Amplitude in g-force
+    - Audio file played
+    
+    <Warning>
+      Start with gentle taps. The default threshold is 0.3g. If nothing happens, try slightly harder slaps or adjust sensitivity (next step).
+    </Warning>
+  </Step>
+  
+  <Step title="Adjust sensitivity (optional)">
+    If detection is too sensitive or not sensitive enough, use the `--min-amplitude` flag:
+    
+    ```bash
+    # More sensitive (detects lighter taps)
+    sudo spank --min-amplitude 0.1
+    
+    # Less sensitive (requires harder hits)
+    sudo spank --min-amplitude 0.5
+    ```
+    
+    The value represents minimum acceleration amplitude in g-force (0.0-1.0). From main.go:200:
+    
+    ```go
+    cmd.Flags().Float64Var(&minAmplitude, "min-amplitude", 0.3, 
+        "Minimum amplitude threshold (0.0-1.0, lower = more sensitive)")
+    ```
+    
+    Recommended ranges:
+    - **Very sensitive** (light taps): 0.05-0.10
+    - **Balanced**: 0.15-0.30 (default: 0.3)
+    - **Only strong impacts**: 0.30-0.50
+  </Step>
+  
+  <Step title="Try different modes">
+    Spank has multiple audio modes. Stop the current session (Ctrl+C) and try:
+    
+    <CodeGroup>
+    ```bash Pain mode (default)
+    sudo spank
+    ```
+    
+    ```bash Sexy mode (escalating)
+    sudo spank --sexy
+    ```
+    
+    ```bash Halo mode (gaming)
+    sudo spank --halo
+    ```
+    
+    ```bash Custom mode (your MP3s)
+    sudo spank --custom /path/to/mp3s
+    ```
+    </CodeGroup>
+    
+    **Pain mode**: Randomly plays from 10 pain/protest audio clips.
+    
+    **Sexy mode**: Tracks slaps within a rolling window. The more you slap, the more intense the audio. Uses exponential decay with a 30-second half-life (main.go:66) to create 60 levels of escalation.
+    
+    **Halo mode**: Randomly plays death sounds from Halo video games.
+    
+    **Custom mode**: Randomly plays your own MP3 files from a specified directory.
+    
+    <Note>
+      Modes are mutually exclusive. You can only use one at a time.
+    </Note>
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Understanding the output
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+When a slap is detected, you'll see output like:
 
-### Step 3: Go live
+```
+slap #3 [hard amp=0.67234g] -> audio/pain/ow-07.mp3
+```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+**Breakdown**:
+- `slap #3`: Third slap since Spank started (from main.go:343)
+- `[hard amp=0.67234g]`: Severity and amplitude in g-force
+- `audio/pain/ow-07.mp3`: Audio file played
+
+## How detection works
+
+Spank processes accelerometer data continuously:
+
+1. **Sensor polling**: Reads accelerometer at 100Hz (every 10ms) from main.go:72:
+   ```go
+   sensorPollInterval = 10 * time.Millisecond
+   ```
+
+2. **Batch processing**: Processes up to 200 samples per tick (main.go:76):
+   ```go
+   maxSampleBatch = 200
+   ```
+
+3. **Event detection**: Uses vibration detection algorithms (STA/LTA, CUSUM, kurtosis, peak/MAD) to identify impacts
+
+4. **Threshold filtering**: Only triggers if amplitude >= `min-amplitude` (main.go:336-338):
+   ```go
+   if ev.Amplitude < minAmplitude {
+       continue
+   }
+   ```
+
+5. **Cooldown**: 750ms minimum between audio playback (main.go:69):
+   ```go
+   slapCooldown = 750 * time.Millisecond
+   ```
+
+## Common workflows
+
+### Run Spank continuously
+
+To keep Spank running in the background:
+
+```bash
+# Run in background
+sudo spank &
+
+# Or use nohup to persist after terminal closes
+nohup sudo spank > /tmp/spank.log 2>&1 &
+```
+
+### Combine sensitivity with modes
+
+You can adjust sensitivity for any mode:
+
+```bash
+# Sexy mode with higher sensitivity
+sudo spank --sexy --min-amplitude 0.2
+
+# Halo mode requiring harder impacts
+sudo spank --halo --min-amplitude 0.4
+```
+
+### Stop Spank
+
+Press `Ctrl+C` in the terminal, or if running in background:
+
+```bash
+# Find the process
+ps aux | grep spank
+
+# Kill it
+sudo kill <PID>
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Run as a service" icon="server">
+    Set up Spank to start automatically at boot using launchd
+  </Card>
+  
+  <Card title="Advanced configuration" icon="sliders">
+    Explore custom audio directories and fine-tune detection parameters
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No slaps detected">
+    - Verify you're running with `sudo`
+    - Lower the threshold: `sudo spank --min-amplitude 0.1`
+    - Try slapping harder or on different parts of the laptop
+    - Check that your chip is M2+ (M1 not supported)
+  </Accordion>
+  
+  <Accordion title="Too many false positives">
+    - Raise the threshold: `sudo spank --min-amplitude 0.4`
+    - Ensure your laptop is on a stable surface
+    - The default cooldown (750ms) prevents most false triggers
+  </Accordion>
+  
+  <Accordion title="No audio playback">
+    - Check system audio volume
+    - Verify audio output device is not muted
+    - Test with a different mode (e.g., `--halo`)
+    - Check console for error messages about audio decoding
+  </Accordion>
+  
+  <Accordion title="Spank crashes immediately">
+    - Ensure you have sudo: `sudo spank`
+    - Check that no other process is using the accelerometer
+    - Verify macOS version compatibility (requires recent macOS on Apple Silicon)
+  </Accordion>
+</AccordionGroup>
