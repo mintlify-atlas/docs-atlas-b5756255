@@ -1,0 +1,58 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Spank",
+  "projectDescription": "A CLI tool that uses Apple Silicon accelerometer to detect laptop slaps and play audio responses",
+  "theme": "palm",
+  "primaryColor": "#FF6B6B",
+  "lightColor": "#FF8787",
+  "darkColor": "#CC5555",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Usage",
+        "pages": [
+          "usage/modes",
+          "usage/sensitivity",
+          "usage/running-as-service"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/cli-commands",
+          "reference/how-it-works",
+          "reference/requirements"
+        ]
+      },
+      {
+        "group": "Advanced",
+        "pages": [
+          "advanced/custom-audio",
+          "advanced/troubleshooting"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Detects physical impacts via Apple Silicon accelerometer using IOKit HID",
+    "Multiple playback modes (pain, sexy, halo, custom)",
+    "Adjustable sensitivity with min-amplitude threshold",
+    "Background service support via launchd",
+    "Zero dependencies - single binary with embedded audio"
+  ],
+  "publicApiSurface": [
+    "spank (main command)",
+    "--sexy (escalating audio based on slap frequency)",
+    "--halo (Halo game sound effects)",
+    "--custom <path> (custom MP3 directory)",
+    "--min-amplitude <float> (sensitivity threshold 0.0-1.0)"
+  ]
+}
